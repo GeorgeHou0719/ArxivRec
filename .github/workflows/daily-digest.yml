@@ -1,0 +1,72 @@
+name: Daily arXiv digest
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Send a fixture verification email or run the live daily pipeline"
+        required: true
+        default: fixture
+        type: choice
+        options:
+          - fixture
+          - live
+  schedule:
+    - cron: "0 5 * * 1-5"
+      timezone: "America/Los_Angeles"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arxivrec-daily-digest
+  cancel-in-progress: false
+
+jobs:
+  deliver:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      ARXIVREC_RECIPIENT: ${{ secrets.ARXIVREC_RECIPIENT }}
+      ARXIVREC_PROFILE_JSON: ${{ secrets.ARXIVREC_PROFILE_JSON }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Restore arXiv and ranking caches
+        uses: actions/cache@v5
+        with:
+          path: data/cache
+          key: arxivrec-data-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            arxivrec-data-${{ runner.os }}-
+
+      - name: Install ArxivRec
+        run: python -m pip install .
+
+      - name: Send fixture verification email
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'fixture'
+        run: >-
+          arxiv-rec send-verification-email
+          --fixture fixtures/cavity_qed_papers.json
+          --relevance-threshold 40
+          --delivery-timezone America/Los_Angeles
+
+      - name: Run live daily recommendation and send email
+        if: github.event_name == 'schedule' || inputs.mode == 'live'
+        run: >-
+          arxiv-rec send-daily-email
+          --lookback-days 1
+          --max-results 100
+          --candidate-threshold 0.20
+          --max-candidates 20
+          --relevance-threshold 40
+          --delivery-timezone America/Los_Angeles

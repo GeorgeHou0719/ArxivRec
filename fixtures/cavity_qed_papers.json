@@ -1,0 +1,120 @@
+{
+  "profile": {
+    "source_text": "I work on cavity QED and quantum interconnects, especially optical cavities that connect remote quantum nodes and enable quantum state transfer.",
+    "core_topics": [
+      "cavity-mediated quantum interconnects",
+      "cavity QED for quantum networking"
+    ],
+    "required_intersections": [
+      ["optical cavity", "quantum network"]
+    ],
+    "primary_facets": [
+      "cavity QED",
+      "remote quantum nodes",
+      "quantum state transfer"
+    ],
+    "methods": ["cavity-mediated light-matter interaction"],
+    "platforms": ["optical cavities", "quantum emitters"],
+    "adjacent_topics": [
+      "quantum networks without cavities",
+      "cavity-based quantum information processing"
+    ],
+    "weakly_related_topics": [
+      "general quantum computing",
+      "cavity optics without quantum information"
+    ],
+    "negative_topics": [
+      "integrated photonics without cavity QED or quantum networking"
+    ],
+    "arxiv_categories": ["quant-ph", "physics.optics"],
+    "positive_examples": [
+      "Entanglement generation between remote emitters through an optical cavity"
+    ],
+    "negative_examples": [
+      "A general-purpose integrated photonic wavelength router"
+    ]
+  },
+  "papers": [
+    {
+      "arxiv_id": "2608.10001v1",
+      "title": "Cavity-Mediated Entanglement Between Remote Quantum Network Nodes",
+      "abstract": "We demonstrate a protocol for distributing entanglement between remote quantum emitters using an optical cavity interface and coherent state transfer.",
+      "authors": ["Alice Example", "Bob Example"],
+      "categories": ["quant-ph", "physics.optics"],
+      "primary_category": "quant-ph",
+      "published_at": "2026-08-18T12:00:00Z",
+      "updated_at": "2026-08-18T12:00:00Z"
+    },
+    {
+      "arxiv_id": "2608.10002",
+      "title": "Fiber-Based Entanglement Distribution for a Metropolitan Quantum Network",
+      "abstract": "Remote quantum nodes exchange entanglement over deployed fiber without resonant optical cavities.",
+      "authors": ["Carol Example"],
+      "categories": ["quant-ph"],
+      "primary_category": "quant-ph",
+      "published_at": "2026-08-18T11:00:00Z",
+      "updated_at": "2026-08-18T11:00:00Z"
+    },
+    {
+      "arxiv_id": "2608.10003",
+      "title": "Nonlinear Dynamics in a Multimode Optical Cavity",
+      "abstract": "We study classical nonlinear mode competition and frequency conversion in a driven optical cavity.",
+      "authors": ["Dana Example"],
+      "categories": ["physics.optics"],
+      "primary_category": "physics.optics",
+      "published_at": "2026-08-18T10:00:00Z",
+      "updated_at": "2026-08-18T10:00:00Z"
+    },
+    {
+      "arxiv_id": "2608.10004",
+      "title": "Compact Integrated Photonic Router for Wavelength-Division Multiplexing",
+      "abstract": "A silicon photonics circuit implements low-loss routing for classical optical communication systems.",
+      "authors": ["Evan Example"],
+      "categories": ["physics.optics"],
+      "primary_category": "physics.optics",
+      "published_at": "2026-08-18T09:00:00Z",
+      "updated_at": "2026-08-18T09:00:00Z"
+    }
+  ],
+  "embedding_vectors": [
+    [1.0, 0.0],
+    [0.99, 0.05],
+    [0.85, 0.25],
+    [0.55, 0.65],
+    [0.05, 0.99]
+  ],
+  "llm_assessments": {
+    "2608.10001": {
+      "relevance_score": 96,
+      "profile_tier": "core_intersection",
+      "confidence": "high",
+      "matched_facets": ["optical cavity", "quantum network", "remote quantum nodes"],
+      "missing_facets": [],
+      "reason": "The paper directly studies cavity-mediated entanglement between remote quantum-network nodes, matching the required intersection and central objective."
+    },
+    "2608.10002": {
+      "relevance_score": 82,
+      "profile_tier": "primary_or_high_value_adjacent",
+      "confidence": "high",
+      "matched_facets": ["quantum network", "remote quantum nodes"],
+      "missing_facets": ["optical cavity", "cavity QED"],
+      "reason": "The paper directly concerns remote quantum networking, but uses a fiber interface without the user's central cavity-QED platform."
+    },
+    "2608.10003": {
+      "relevance_score": 47,
+      "profile_tier": "weakly_related",
+      "confidence": "high",
+      "matched_facets": ["optical cavity"],
+      "missing_facets": ["quantum network", "quantum information"],
+      "reason": "The work shares an optical-cavity platform but studies classical nonlinear dynamics rather than quantum interconnects."
+    },
+    "2608.10004": {
+      "relevance_score": 12,
+      "profile_tier": "none_or_negative",
+      "confidence": "high",
+      "matched_facets": [],
+      "missing_facets": ["cavity QED", "quantum network"],
+      "reason": "The paper concerns classical integrated photonic routing and does not address cavities, quantum nodes, or quantum networking."
+    }
+  }
+}

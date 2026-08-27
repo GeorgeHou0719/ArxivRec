@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/"
+      xmlns:arxiv="http://arxiv.org/schemas/atom">
+  <title>ArxivRec test feed</title>
+  <id>https://arxiv.org/api/test-feed</id>
+  <updated>2026-08-18T12:00:00Z</updated>
+  <opensearch:totalResults>2</opensearch:totalResults>
+  <opensearch:startIndex>0</opensearch:startIndex>
+  <opensearch:itemsPerPage>2</opensearch:itemsPerPage>
+  <entry>
+    <id>https://arxiv.org/abs/2608.10001v2</id>
+    <updated>2026-08-18T13:00:00Z</updated>
+    <published>2026-08-18T12:00:00Z</published>
+    <title>
+      Cavity-Mediated Entanglement Between Remote Quantum Network Nodes
+    </title>
+    <summary>
+      We distribute entanglement between remote quantum emitters using an optical cavity.
+    </summary>
+    <author><name>Alice Example</name></author>
+    <author><name>Bob Example</name></author>
+    <link href="https://arxiv.org/abs/2608.10001v2" rel="alternate" type="text/html" />
+    <link href="https://arxiv.org/pdf/2608.10001v2" rel="related" type="application/pdf" title="pdf" />
+    <arxiv:primary_category term="quant-ph" scheme="http://arxiv.org/schemas/atom" />
+    <category term="quant-ph" scheme="http://arxiv.org/schemas/atom" />
+    <category term="physics.optics" scheme="http://arxiv.org/schemas/atom" />
+  </entry>
+  <entry>
+    <id>https://arxiv.org/abs/2608.09000v1</id>
+    <updated>2026-08-10T09:00:00Z</updated>
+    <published>2026-08-10T09:00:00Z</published>
+    <title>Classical Routing in an Integrated Photonic Circuit</title>
+    <summary>We demonstrate a wavelength router for classical optical signals.</summary>
+    <author><name>Carol Example</name></author>
+    <link href="https://arxiv.org/abs/2608.09000v1" rel="alternate" type="text/html" />
+    <link href="https://arxiv.org/pdf/2608.09000v1" rel="related" type="application/pdf" title="pdf" />
+    <arxiv:primary_category term="physics.optics" scheme="http://arxiv.org/schemas/atom" />
+    <category term="physics.optics" scheme="http://arxiv.org/schemas/atom" />
+  </entry>
+</feed>
+

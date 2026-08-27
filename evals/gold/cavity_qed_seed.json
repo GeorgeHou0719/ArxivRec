@@ -1,0 +1,27 @@
+{
+  "name": "cavity-qed-seed-v1",
+  "description": "User-approved seed judgements for the cavity-QED recommendation rubric.",
+  "judgments": [
+    {
+      "arxiv_id": "2608.10001",
+      "relevance_score": 96,
+      "notes": "Directly matches optical cavity and quantum-network intersection."
+    },
+    {
+      "arxiv_id": "2608.10002",
+      "relevance_score": 82,
+      "notes": "Quantum networking is strongly relevant despite the missing cavity platform."
+    },
+    {
+      "arxiv_id": "2608.10003",
+      "relevance_score": 47,
+      "notes": "Optical-cavity platform only; classical dynamics makes it peripheral."
+    },
+    {
+      "arxiv_id": "2608.10004",
+      "relevance_score": 12,
+      "notes": "Classical integrated photonics with no meaningful cavity-QED connection."
+    }
+  ]
+}
+

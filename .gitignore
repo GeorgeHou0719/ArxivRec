@@ -20,6 +20,7 @@ data/cache/
 data/live-validation-cache/
 data/live-validation-ranking/
 data/rate-limit-validation-cache/
+data/live-calibration-v2/
 dist/
 build/
 *.egg-info/

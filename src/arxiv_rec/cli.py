@@ -114,6 +114,11 @@ def build_parser() -> argparse.ArgumentParser:
     daily_parser.add_argument("--max-candidates", type=int, default=20)
     daily_parser.add_argument("--relevance-threshold", type=int, default=40)
     daily_parser.add_argument("--delivery-timezone", default="America/Los_Angeles")
+    daily_parser.add_argument(
+        "--allow-duplicate-email",
+        action="store_true",
+        help="Skip the daily idempotency key for an intentional manual verification send",
+    )
     return parser
 
 
@@ -565,10 +570,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             daily_run,
             settings=settings,
             delivery_timezone=args.delivery_timezone,
-            idempotency_key=_daily_idempotency_key(
-                daily_run,
-                profile=profile,
-                delivery_timezone=args.delivery_timezone,
+            idempotency_key=(
+                None
+                if args.allow_duplicate_email
+                else _daily_idempotency_key(
+                    daily_run,
+                    profile=profile,
+                    delivery_timezone=args.delivery_timezone,
+                )
             ),
         )
         _print_live_report(daily_run)

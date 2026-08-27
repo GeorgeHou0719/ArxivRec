@@ -11,3 +11,6 @@ def test_daily_digest_workflow_has_agreed_schedule_and_manual_verification() -> 
     assert "send-daily-email" in workflow
     assert "--lookback-days 1" in workflow
     assert "--relevance-threshold 40" in workflow
+    assert "Run manual live recommendation and send email" in workflow
+    assert "--allow-duplicate-email" in workflow
+    assert "Run scheduled daily recommendation and send email" in workflow

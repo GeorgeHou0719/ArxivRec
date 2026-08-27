@@ -47,6 +47,10 @@ def _provider_error(response: httpx.Response) -> EmailDeliveryError:
         )
     if response.status_code == 429:
         return EmailDeliveryError("Resend rate-limited the email request; try again later.")
+    if response.status_code == 409:
+        return EmailDeliveryError(
+            "Resend rejected reuse of an idempotency key with different email content."
+        )
     return EmailDeliveryError(
         f"Resend email delivery failed with HTTP status {response.status_code}."
     )

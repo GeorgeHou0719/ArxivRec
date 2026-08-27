@@ -80,3 +80,20 @@ def test_resend_connection_error_does_not_expose_low_level_details() -> None:
 
     assert "Could not connect to Resend" in str(error.value)
     assert "private network details" not in str(error.value)
+
+
+def test_resend_idempotency_conflict_is_actionable() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        del request
+        return httpx.Response(409, json={"message": "conflict"})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(EmailDeliveryError) as error:
+            send_digest_via_resend(
+                _content(),
+                api_key="re_test_secret",
+                recipient="researcher@stanford.edu",
+                idempotency_key="same-day-key",
+                client=client,
+            )
+    assert "idempotency key" in str(error.value)

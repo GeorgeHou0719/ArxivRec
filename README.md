@@ -79,7 +79,7 @@ paper's complete arXiv abstract is included directly in both HTML and plain text
 truncated or summarized by another model. A plain-text equivalent is built at the same time for
 email-client fallback support.
 
-The agreed personal delivery schedule for the next checkpoint is Monday through Friday at 05:00
+The agreed personal delivery schedule for the next checkpoint is Monday through Friday at 05:07
 in `America/Los_Angeles`, using a one-day lookback. Saturday and Sunday runs will be omitted.
 ## Send an immediate verification email
 
@@ -136,7 +136,7 @@ Resend requests.
 
 ## GitHub Actions delivery
 
-`.github/workflows/daily-digest.yml` runs at 05:00 Monday through Friday in
+`.github/workflows/daily-digest.yml` runs at 05:07 Monday through Friday in
 `America/Los_Angeles`; Saturday and Sunday have no scheduled job. The scheduled command uses a
 one-day lookback and relevance threshold 40. It also provides a manual **Run workflow** action
 with two modes:

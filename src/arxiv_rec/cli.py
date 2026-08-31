@@ -7,11 +7,13 @@ import hashlib
 import json
 import sys
 from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 from zoneinfo import ZoneInfo
 
 from arxiv_rec.arxiv_client import ArxivClient
+from arxiv_rec.delivery_state import DeliveryStateStore, paper_version_key
 from arxiv_rec.digest import build_digest, write_digest_preview
 from arxiv_rec.email_delivery import EmailDeliveryReceipt, send_digest_via_resend
 from arxiv_rec.evaluation import EvaluationReport, GoldSet, ScorePrediction, evaluate_all
@@ -108,7 +110,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run live arXiv retrieval and OpenAI ranking, then send the daily digest",
     )
     daily_parser.add_argument("--profile-file", type=Path)
-    daily_parser.add_argument("--lookback-days", type=int, default=1)
+    daily_parser.add_argument(
+        "--lookback-days",
+        type=int,
+        default=7,
+        help="Safety backfill for a new profile; later runs use the saved cursor",
+    )
     daily_parser.add_argument("--max-results", type=int, default=100)
     daily_parser.add_argument("--candidate-threshold", type=float, default=0.20)
     daily_parser.add_argument("--max-candidates", type=int, default=20)
@@ -328,6 +335,8 @@ def run_live_with_profile(
     candidate_threshold: float,
     max_candidates: int,
     relevance_threshold: int,
+    published_after: datetime | None = None,
+    processed_versions: frozenset[str] = frozenset(),
 ) -> RecommendationRun:
     """Run daily retrieval/ranking with an already approved structured profile."""
     if not settings.live_openai_available or settings.openai_api_key is None:
@@ -338,12 +347,31 @@ def run_live_with_profile(
         user_agent=settings.arxiv_user_agent,
         cache_dir=settings.cache_dir,
         timeout_seconds=settings.request_timeout_seconds,
+        cache_ttl=timedelta(hours=1) if published_after is not None else timedelta(hours=24),
+        rate_limit_state_path=settings.cache_dir / ".arxiv_api_rate_limit",
     ) as client:
-        fetch_report = fetch_live_report(
-            profile=profile,
-            client=client,
-            lookback_days=lookback_days,
-            max_results=max_results,
+        if published_after is None:
+            fetch_report = fetch_live_report(
+                profile=profile,
+                client=client,
+                lookback_days=lookback_days,
+                max_results=max_results,
+            )
+        else:
+            fetch_report = client.fetch_report(
+                categories=profile.arxiv_categories,
+                published_after=published_after,
+                max_results=max_results,
+            )
+    if processed_versions:
+        fetch_report = fetch_report.model_copy(
+            update={
+                "items": tuple(
+                    item
+                    for item in fetch_report.items
+                    if paper_version_key(item.paper) not in processed_versions
+                )
+            }
         )
     return run_recommendation(
         mode=RunMode.LIVE,
@@ -557,6 +585,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "send-daily-email":
         settings = AppSettings()
         profile = _load_delivery_profile(args.profile_file, settings)
+        checkpoint = DeliveryStateStore(settings.delivery_state_dir).load(profile)
+        retrieval_cutoff = checkpoint.retrieval_cutoff(
+            now=datetime.now(UTC),
+            initial_lookback_days=args.lookback_days,
+        )
+        checkpoint_mode = (
+            "initial safety backfill"
+            if checkpoint.last_successful_updated_at is None
+            else "saved cursor with 24-hour overlap"
+        )
+        print(f"Incremental retrieval: {checkpoint_mode}; cutoff {retrieval_cutoff.isoformat()}")
         daily_run = run_live_with_profile(
             profile=profile,
             settings=settings,
@@ -565,7 +604,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             candidate_threshold=args.candidate_threshold,
             max_candidates=args.max_candidates,
             relevance_threshold=args.relevance_threshold,
+            published_after=retrieval_cutoff,
+            processed_versions=frozenset(checkpoint.processed_versions),
         )
+        if daily_run.fetch_report is None or daily_run.fetch_report.truncated:
+            raise RuntimeError(
+                "Incremental arXiv retrieval hit its safety cap before reaching the "
+                "checkpoint. No email was sent and delivery state was not advanced."
+            )
         receipt = _send_digest(
             daily_run,
             settings=settings,
@@ -580,6 +626,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             ),
         )
+        updated_checkpoint = checkpoint.commit(daily_run.fetch_report.papers)
+        if updated_checkpoint.last_successful_updated_at == checkpoint.last_successful_updated_at:
+            print("Delivery checkpoint unchanged: no unseen arXiv versions were delivered.")
+        else:
+            assert updated_checkpoint.last_successful_updated_at is not None
+            print(
+                "Delivery checkpoint advanced to "
+                f"{updated_checkpoint.last_successful_updated_at.isoformat()}."
+            )
         _print_live_report(daily_run)
         print(f"Daily email accepted by {receipt.provider}: {receipt.message_id}")
         return 0

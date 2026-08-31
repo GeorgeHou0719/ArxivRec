@@ -64,8 +64,8 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.mode == 'live'
         run: >-
           arxiv-rec send-daily-email
-          --lookback-days 1
-          --max-results 100
+          --lookback-days 7
+          --max-results 500
           --candidate-threshold 0.20
           --max-candidates 20
           --relevance-threshold 40
@@ -76,8 +76,8 @@ jobs:
         if: github.event_name == 'schedule'
         run: >-
           arxiv-rec send-daily-email
-          --lookback-days 1
-          --max-results 100
+          --lookback-days 7
+          --max-results 500
           --candidate-threshold 0.20
           --max-candidates 20
           --relevance-threshold 40

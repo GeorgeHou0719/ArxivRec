@@ -29,6 +29,7 @@ class AppSettings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     database_path: Path = Path("data/arxiv_rec.sqlite3")
     cache_dir: Path = Path("data/cache")
+    delivery_state_dir: Path = Path("data/cache/delivery-state")
     arxiv_api_url: str = "https://export.arxiv.org/api/query"
     arxiv_user_agent: str = "ArxivRec/0.1 (local research tool)"
     request_timeout_seconds: float = Field(default=30.0, gt=0, le=120)

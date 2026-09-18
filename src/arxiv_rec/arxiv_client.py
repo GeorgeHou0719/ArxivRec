@@ -17,6 +17,7 @@ from urllib.parse import urlencode
 
 import httpx
 
+from arxiv_rec.delivery_state import paper_version_key
 from arxiv_rec.models import ArxivFetchReport, FetchedPaper, Paper, PaperUpdateKind
 
 ATOM: Final = "http://www.w3.org/2005/Atom"
@@ -386,6 +387,143 @@ class ArxivClient:
             safety_cap=max_results,
             complete_through_cutoff=complete_through_cutoff,
             truncated=truncated,
+        )
+
+    def fetch_incremental_report(
+        self,
+        *,
+        categories: Sequence[str],
+        published_after: datetime,
+        max_results: int,
+        processed_versions: frozenset[str] = frozenset(),
+    ) -> ArxivFetchReport:
+        """Return a safe oldest-first batch when the date window exceeds the cap.
+
+        The usual small-window path is unchanged. For a backlog, locate the date
+        boundary afresh, then walk toward newer records. Never persist a mutable
+        API page offset or advance the cursor past undelivered older papers.
+        max_results limits unseen versions in a batch, not boundary probes or
+        already processed records in the overlap window.
+        """
+        prefix = self.fetch_report(
+            categories=categories,
+            published_after=published_after,
+            max_results=max_results,
+        )
+        if not prefix.truncated:
+            return prefix.model_copy(
+                update={
+                    "items": tuple(
+                        item
+                        for item in prefix.items
+                        if paper_version_key(item.paper) not in processed_versions
+                    )
+                }
+            )
+
+        cutoff = prefix.cutoff
+        total = prefix.api_total_results
+        query = build_category_query(prefix.categories)
+        inspected = prefix.scanned_count
+
+        def read_slice(start: int, count: int) -> tuple[Paper, ...]:
+            nonlocal inspected
+            feed = parse_atom_feed(
+                self._get_page(
+                    {
+                        "search_query": query,
+                        "start": str(start),
+                        "max_results": str(count),
+                        "sortBy": "lastUpdatedDate",
+                        "sortOrder": "descending",
+                    }
+                )
+            )
+            inspected += len(feed.papers)
+            if feed.total_results != total or len(feed.papers) != count:
+                raise ArxivClientError(
+                    "arXiv results changed during catch-up boundary lookup. "
+                    "Retry with unchanged delivery state."
+                )
+            if any(
+                left.updated_at < right.updated_at
+                for left, right in zip(feed.papers, feed.papers[1:], strict=False)
+            ):
+                raise ArxivClientError("arXiv returned an unsorted catch-up page.")
+            return feed.papers
+
+        # Find the first record older than cutoff. Probe only the recent end of
+        # the descending index, avoiding a search through all category history.
+        # Keep deep searches within a conservative 30,000-record API window.
+        search_limit = 30_000
+        if prefix.scanned_count >= search_limit:
+            raise ArxivClientError("Catch-up exceeds the supported search window.")
+        lower = prefix.scanned_count - 1
+        upper = min(prefix.scanned_count * 2 - 1, total, search_limit - 1)
+        while upper < total and read_slice(upper, 1)[0].updated_at >= cutoff:
+            lower = upper
+            next_upper = min(upper * 2 + 1, total, search_limit - 1)
+            if next_upper <= upper:
+                raise ArxivClientError(
+                    "Catch-up exceeds the 30,000-record search window. "
+                    "Bulk metadata access is required; delivery state was not advanced."
+                )
+            upper = next_upper
+        while lower + 1 < upper:
+            middle = (lower + upper) // 2
+            if read_slice(middle, 1)[0].updated_at >= cutoff:
+                lower = middle
+            else:
+                upper = middle
+
+        # Read backward from that boundary, i.e. oldest eligible records first.
+        # Re-seeking by timestamp next run handles newly inserted or revised
+        # records; version deduplication also handles ties at a batch boundary.
+        end = upper
+        chosen: dict[str, FetchedPaper] = {}
+        remaining = False
+        previous_newest: datetime | None = None
+        while end > 0 and len(chosen) < max_results:
+            start = max(0, end - self.page_size)
+            page = read_slice(start, end - start)
+            if any(paper.updated_at < cutoff for paper in page):
+                raise ArxivClientError("arXiv catch-up date boundary changed; retry later.")
+            if previous_newest is not None and page[-1].updated_at < previous_newest:
+                raise ArxivClientError("arXiv catch-up page ordering changed; retry later.")
+            previous_newest = page[0].updated_at
+            eligible = [
+                paper
+                for paper in reversed(page)
+                if paper_version_key(paper) not in processed_versions
+                and paper_version_key(paper) not in chosen
+            ]
+            available = max_results - len(chosen)
+            for paper in eligible[:available]:
+                key = paper_version_key(paper)
+                chosen[key] = FetchedPaper(
+                    paper=paper,
+                    update_kind=(
+                        PaperUpdateKind.NEW_SUBMISSION
+                        if paper.published_at >= cutoff
+                        else PaperUpdateKind.REVISED_VERSION
+                    ),
+                )
+            remaining = start > 0 or len(eligible) > available
+            end = start
+
+        return ArxivFetchReport(
+            items=tuple(
+                sorted(chosen.values(), key=lambda item: item.paper.updated_at, reverse=True)
+            ),
+            categories=prefix.categories,
+            cutoff=cutoff,
+            api_total_results=total,
+            scanned_count=inspected,
+            page_size=self.page_size,
+            safety_cap=max_results,
+            complete_through_cutoff=not remaining,
+            truncated=remaining,
+            catchup_batch=True,
         )
 
     def _get_page(self, params: dict[str, str]) -> bytes:

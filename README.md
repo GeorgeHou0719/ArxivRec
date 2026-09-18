@@ -80,7 +80,8 @@ truncated or summarized by another model. A plain-text equivalent is built at th
 email-client fallback support.
 
 The agreed personal delivery schedule for the next checkpoint is Monday through Friday at 05:07
-in `America/Los_Angeles`, using a one-day lookback. Saturday and Sunday runs will be omitted.
+in `America/Los_Angeles`. Scheduled delivery uses a saved incremental cursor rather than a
+rolling one-day window. Saturday and Sunday runs are omitted.
 ## Send an immediate verification email
 
 Create a Resend account with the same Stanford address that will receive the test message, then
@@ -123,8 +124,8 @@ Then run the same live retrieval/ranking/email path used by the scheduler:
 ```powershell
 .\.venv\Scripts\arxiv-rec send-daily-email `
   --profile-file config\research_profile.json `
-  --lookback-days 1 `
-  --max-results 100 `
+  --lookback-days 7 `
+  --max-results 500 `
   --candidate-threshold 0.20 `
   --max-candidates 20 `
   --relevance-threshold 40 `
@@ -134,11 +135,16 @@ Then run the same live retrieval/ranking/email path used by the scheduler:
 Unlike the fixture verification, this command makes live arXiv, OpenAI embedding/ranking, and
 Resend requests.
 
+For delivery commands, `--lookback-days` applies only to a new research profile with no saved
+state. Later runs start 24 hours before the last successfully delivered update timestamp.
+`--max-results` limits unseen paper versions per batch. Existing profile state is reused.
+
 ## GitHub Actions delivery
 
 `.github/workflows/daily-digest.yml` runs at 05:07 Monday through Friday in
 `America/Los_Angeles`; Saturday and Sunday have no scheduled job. The scheduled command uses a
-one-day lookback and relevance threshold 40. It also provides a manual **Run workflow** action
+seven-day initial backfill, batches of up to 500 unseen versions, and relevance threshold 40.
+It also provides a manual **Run workflow** action
 with two modes:
 
 - `fixture`: send the offline fixture email immediately without OpenAI/arXiv calls.
@@ -154,21 +160,44 @@ Configure these repository Actions secrets before using the workflow:
 | `ARXIVREC_PROFILE_JSON` | Entire validated `config/research_profile.json` content |
 
 The fixture mode needs only the two email secrets. The scheduled/live mode needs all four.
-Scheduled emails use a date-and-profile idempotency key so rerunning the same daily job does not
-normally deliver a duplicate message.
+Scheduled emails use a date/profile/batch idempotency key, allowing separate catch-up batches
+on the same day while protecting retries of the same batch.
+
+### Resumable backlog catch-up
+
+If the incremental date window contains more papers than a batch can hold, the runner locates
+the date boundary and selects the oldest unseen versions first. It re-seeks by timestamp on
+each run rather than saving a page offset that new insertions or revisions could invalidate.
+Boundary probes and already processed overlap records do not consume the unseen-version cap.
+
+A bounded batch is not an error. After Resend accepts its email, all fetched versions in that
+batch (including irrelevant ones) are recorded and the cursor advances only to that batch's
+newest update. The next scheduled or manual live run continues the remaining backlog. Paper
+scoring, recall thresholds, and the maximum ranking-candidate setting remain unchanged.
+
+While backlog remains, the email subject and both bodies say **Backlog catch-up** and explain
+that this is not a complete scan of today's updates. Retrieval, ranking, or email failures
+do not advance the delivery cursor. Actions saves the existing state, successful metadata and
+ranking caches, and any rate-limit cooldown even when a run fails. A new cache key per run
+attempt makes reruns resumable too. State lives in `data/cache/delivery-state/`, separated by
+research-profile hash; changing the profile starts a new initial backfill.
 
 ## arXiv API etiquette
 
 Live retrieval follows the official legacy-API limits: one connection at a time and no more
 than one request every 3 seconds. ArxivRec uses a shared on-disk request gate across runs,
-persists `Retry-After` cooldowns after HTTP 429, and caches successful pages for 24 hours.
+persists `Retry-After` cooldowns after HTTP 429, and caches successful pages for 24 hours in
+the UI and one hour in incremental email runs.
 Queries sort category matches by `lastUpdatedDate` and scan 50-result pages only until the
 lookback cutoff is reached. This includes both new submissions and older papers revised in the
 window. A day with 30 updates therefore normally needs one 50-record page rather than blindly
 downloading the 100-paper safety cap. The UI reports the API's all-time `totalResults`, scanned
 records, new/revised counts, and whether the safety cap made coverage incomplete. The local UI
 defaults to a one-day lookback and a total safety cap of 100; increase the lookback manually
-after missed runs.
+after missed runs. Email runs instead use the automatic resumable catch-up described above.
+Boundary lookups retain the same shared request interval and single connection; they inspect
+only the recent end of the search index, with a conservative 30,000-record deep-search guard.
+HTTP 429 can still interrupt a run; delivery progress remains unchanged for a later retry.
 
 Thank you to arXiv for use of its open access interoperability. This independent project is not
 endorsed by arXiv.

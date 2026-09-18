@@ -168,6 +168,7 @@ class ArxivFetchReport(StrictModel):
     safety_cap: int = Field(ge=1)
     complete_through_cutoff: bool
     truncated: bool
+    catchup_batch: bool = False
 
     @field_validator("categories", mode="before")
     @classmethod

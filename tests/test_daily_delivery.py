@@ -4,15 +4,17 @@ from types import SimpleNamespace
 
 import pytest
 
-from arxiv_rec.cli import main
+from arxiv_rec.cli import _daily_idempotency_key, main, run_live_with_profile
 from arxiv_rec.delivery_state import DeliveryStateStore
 from arxiv_rec.email_delivery import EmailDeliveryReceipt
 from arxiv_rec.models import ArxivFetchReport, FetchedPaper, PaperUpdateKind, RunMode
 from arxiv_rec.pipeline import load_fixture, run_fixture
+from arxiv_rec.settings import AppSettings
 
 
+@pytest.mark.parametrize("catchup", [False, True])
 def test_daily_checkpoint_advances_only_after_email_is_accepted(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, catchup: bool
 ) -> None:
     profile, papers, _ = load_fixture(Path("fixtures/cavity_qed_papers.json"))
     profile_path = tmp_path / "profile.json"
@@ -32,8 +34,9 @@ def test_daily_checkpoint_advances_only_after_email_is_accepted(
         scanned_count=1,
         page_size=50,
         safety_cap=500,
-        complete_through_cutoff=True,
-        truncated=False,
+        complete_through_cutoff=not catchup,
+        truncated=catchup,
+        catchup_batch=catchup,
     )
     fixture_run = run_fixture(
         path=Path("fixtures/cavity_qed_papers.json"),
@@ -86,3 +89,68 @@ def test_daily_checkpoint_advances_only_after_email_is_accepted(
     assert main(command) == 0
     checkpoint = DeliveryStateStore(state_dir).load(profile)
     assert checkpoint.last_successful_updated_at == papers[0].updated_at
+
+
+def test_separate_batches_on_same_day_have_separate_email_idempotency_keys() -> None:
+    first = run_fixture(path=Path("fixtures/cavity_qed_papers.json"))
+    second = first.model_copy(
+        update={"recall": first.recall.model_copy(update={"items": first.recall.items[1:]})}
+    )
+
+    def key(report):
+        return _daily_idempotency_key(
+            report, profile=report.profile, delivery_timezone="America/Los_Angeles"
+        )
+
+    assert key(first) == key(first)
+    assert key(first) != key(second)
+
+
+def test_unsafe_partial_fetch_is_rejected_before_ranking(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    profile, _, _ = load_fixture(Path("fixtures/cavity_qed_papers.json"))
+    cutoff = run_fixture(path=Path("fixtures/cavity_qed_papers.json")).started_at
+    unsafe = ArxivFetchReport(
+        items=(),
+        categories=profile.arxiv_categories,
+        cutoff=cutoff,
+        api_total_results=1000,
+        scanned_count=500,
+        page_size=50,
+        safety_cap=500,
+        complete_through_cutoff=False,
+        truncated=True,
+    )
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def fetch_incremental_report(self, **kwargs):
+            return unsafe
+
+    def unexpected_ranking(**kwargs):
+        pytest.fail("Unsafe metadata must be rejected before any ranking.")
+
+    monkeypatch.setattr("arxiv_rec.cli.ArxivClient", FakeClient)
+    monkeypatch.setattr("arxiv_rec.cli.run_recommendation", unexpected_ranking)
+    with pytest.raises(RuntimeError, match="no ranking or email"):
+        run_live_with_profile(
+            profile=profile,
+            settings=AppSettings(
+                _env_file=None, openai_api_key="test-only-no-network", cache_dir=tmp_path
+            ),
+            lookback_days=7,
+            max_results=500,
+            candidate_threshold=0.2,
+            max_candidates=20,
+            relevance_threshold=40,
+            published_after=cutoff,
+        )

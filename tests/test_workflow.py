@@ -12,6 +12,13 @@ def test_daily_digest_workflow_has_agreed_schedule_and_manual_verification() -> 
     assert "--lookback-days 7" in workflow
     assert "--max-results 500" in workflow
     assert "path: data/cache" in workflow
+    assert "actions/cache/restore@v5" in workflow
+    assert "actions/cache/save@v5" in workflow
+    assert "if: always() && steps.data-cache.outcome == 'success'" in workflow
+    assert "github.run_attempt" in workflow
+    assert workflow.index("Persist delivery progress") > workflow.index(
+        "Run scheduled daily recommendation"
+    )
     assert "--relevance-threshold 40" in workflow
     assert "Run manual live recommendation and send email" in workflow
     assert "--allow-duplicate-email" in workflow

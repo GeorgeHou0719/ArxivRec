@@ -116,7 +116,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=7,
         help="Safety backfill for a new profile; later runs use the saved cursor",
     )
-    daily_parser.add_argument("--max-results", type=int, default=100)
+    daily_parser.add_argument(
+        "--max-results",
+        type=int,
+        default=500,
+        help="Maximum unseen paper versions per email batch; backlogs resume next run",
+    )
     daily_parser.add_argument("--candidate-threshold", type=float, default=0.20)
     daily_parser.add_argument("--max-candidates", type=int, default=20)
     daily_parser.add_argument("--relevance-threshold", type=int, default=40)
@@ -358,21 +363,14 @@ def run_live_with_profile(
                 max_results=max_results,
             )
         else:
-            fetch_report = client.fetch_report(
+            fetch_report = client.fetch_incremental_report(
                 categories=profile.arxiv_categories,
                 published_after=published_after,
                 max_results=max_results,
+                processed_versions=processed_versions,
             )
-    if processed_versions:
-        fetch_report = fetch_report.model_copy(
-            update={
-                "items": tuple(
-                    item
-                    for item in fetch_report.items
-                    if paper_version_key(item.paper) not in processed_versions
-                )
-            }
-        )
+    if published_after is not None and fetch_report.truncated and not fetch_report.catchup_batch:
+        raise RuntimeError("Unsafe incomplete retrieval; no ranking or email was attempted.")
     return run_recommendation(
         mode=RunMode.LIVE,
         profile=profile,
@@ -452,7 +450,8 @@ def _daily_idempotency_key(
     delivery_timezone: str,
 ) -> str:
     local_day = report.completed_at.astimezone(ZoneInfo(delivery_timezone)).date().isoformat()
-    material = f"{local_day}\n{profile.model_dump_json()}"
+    versions = "\n".join(sorted(paper_version_key(item.paper) for item in report.recall.items))
+    material = f"{local_day}\n{profile.model_dump_json()}\n{versions}"
     digest = hashlib.sha256(material.encode("utf-8")).hexdigest()[:20]
     return f"arxivrec-daily-{local_day}-{digest}"
 
@@ -464,7 +463,11 @@ def _print_live_report(report: RecommendationRun) -> None:
     )
     if report.fetch_report is not None:
         fetch = report.fetch_report
-        status = "TRUNCATED" if fetch.truncated else "complete"
+        status = (
+            "catch-up batch; more pending"
+            if fetch.catchup_batch and fetch.truncated
+            else ("TRUNCATED" if fetch.truncated else "complete")
+        )
         print(
             f"Coverage: {status}; {fetch.new_submission_count} new, "
             f"{fetch.revised_version_count} revised; scanned {fetch.scanned_count} "
@@ -607,10 +610,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             published_after=retrieval_cutoff,
             processed_versions=frozenset(checkpoint.processed_versions),
         )
-        if daily_run.fetch_report is None or daily_run.fetch_report.truncated:
+        if daily_run.fetch_report is None or (
+            daily_run.fetch_report.truncated and not daily_run.fetch_report.catchup_batch
+        ):
             raise RuntimeError(
-                "Incremental arXiv retrieval hit its safety cap before reaching the "
-                "checkpoint. No email was sent and delivery state was not advanced."
+                "Incremental retrieval did not produce a safe batch. "
+                "No email was sent and delivery state was not advanced."
             )
         receipt = _send_digest(
             daily_run,
@@ -627,8 +632,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             ),
         )
         updated_checkpoint = checkpoint.commit(daily_run.fetch_report.papers)
-        if updated_checkpoint.last_successful_updated_at == checkpoint.last_successful_updated_at:
+        if not daily_run.fetch_report.papers:
             print("Delivery checkpoint unchanged: no unseen arXiv versions were delivered.")
+        elif updated_checkpoint.last_successful_updated_at == checkpoint.last_successful_updated_at:
+            print("New overlap versions recorded; timestamp cursor unchanged.")
         else:
             assert updated_checkpoint.last_successful_updated_at is not None
             print(

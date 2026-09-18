@@ -141,17 +141,23 @@ def _paper_card(recommendation: Recommendation, update_label: str | None) -> str
     """
 
 
-def _empty_state(threshold: int) -> str:
+def _empty_state(threshold: int, *, catchup: bool = False) -> str:
+    period = "in this batch" if catchup else "today"
+    coverage = (
+        "This catch-up batch completed successfully; more papers remain to be processed."
+        if catchup
+        else "The daily scan completed successfully."
+    )
     return f"""
       <tr>
         <td style="padding:0 18px 20px;">
           <div style="padding:26px 20px;border:1px solid #e2e8f0;border-radius:14px;
                       background:#ffffff;text-align:center;">
             <div style="font-size:18px;font-weight:750;color:#0f172a;">
-              No papers reached your relevance threshold today.
+              No papers reached your relevance threshold {period}.
             </div>
             <div style="margin-top:8px;font-size:14px;line-height:1.5;color:#64748b;">
-              The daily scan completed successfully. Your current threshold is {threshold}.
+              {coverage} Your current threshold is {threshold}.
             </div>
           </div>
         </td>
@@ -172,17 +178,35 @@ def build_digest(
     selected_count = len(selected)
     candidate_count = len(run.recall.candidates)
     top_score = selected[0].assessment.relevance_score if selected else None
+    catchup = bool(
+        run.fetch_report
+        and run.fetch_report.catchup_batch
+        and run.fetch_report.truncated
+    )
+    catchup_message = (
+        "Backlog catch-up: this email covers an older batch of unprocessed papers, "
+        "not a complete scan of today's updates. More papers remain and will be "
+        "processed in subsequent runs."
+    )
+    catchup_notice = (
+        '<tr><td style="padding:0 18px 16px;font-size:14px;line-height:1.5;'
+        'color:#92400e;">' + escape(catchup_message) + "</td></tr>"
+        if catchup
+        else ""
+    )
     count_label = "paper" if selected_count == 1 else "papers"
     subject = f"ArxivRec · {_short_date(local_date)} · {selected_count} relevant {count_label}"
     if top_score is not None:
         subject += f" · top score {top_score}"
+    if catchup:
+        subject = "[Backlog catch-up] " + subject
 
     update_labels = _paper_update_labels(run)
     cards = "".join(
         _paper_card(item, update_labels.get(item.paper.arxiv_id)) for item in selected
     )
     if not cards:
-        cards = _empty_state(run.ranking.relevance_threshold)
+        cards = _empty_state(run.ranking.relevance_threshold, catchup=catchup)
 
     preheader = (
         f"{selected_count} relevant {count_label} from {run.fetched_count} scanned; "
@@ -258,6 +282,7 @@ def build_digest(
                 </div>
               </td>
             </tr>
+            {catchup_notice}
             {cards}
             <tr>
               <td style="padding:8px 22px 24px;text-align:center;font-size:11px;
@@ -283,8 +308,11 @@ def build_digest(
         f"{candidate_count} papers assessed",
         f"{selected_count} papers at or above threshold {run.ranking.relevance_threshold}",
     ]
+    if catchup:
+        text_lines.extend(["", catchup_message])
     if not selected:
-        text_lines.extend(["", "No papers reached your relevance threshold today."])
+        period = "in this batch" if catchup else "today"
+        text_lines.extend(["", f"No papers reached your relevance threshold {period}."])
     for item in selected:
         assessment = item.assessment
         paper = item.paper
